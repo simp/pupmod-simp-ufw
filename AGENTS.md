@@ -30,7 +30,10 @@ are removed only with `ensure => absent`.
   - `ipv6` is a `file_line` on `IPV6=` that notifies a refresh-only
     `ufw reload` (only when ufw is enabled).
   - `rules_entries` declares one `ufw_rule` per entry; `lookup_options`
-    deep-merges it. `conflicting_packages_entries` manages other packages
+    deep-merges it. `action` has no default: an entry without one (even
+    `ensure: absent`, since ufw deletes only on a matching action) fails
+    compilation with a message naming it, and `ufw_rule` rejects a missing
+    `action` too. `conflicting_packages_entries` manages other packages
     (removals happen before ufw is installed).
   - Order: package → IPv6 setting/reload → rules → default policies →
     logging → enable/disable → service.

@@ -4,13 +4,17 @@ require 'spec_helper'
 
 describe Puppet::Type.type(:ufw_rule) do
   def rule(params)
-    described_class.new({ name: 'test' }.merge(params))
+    described_class.new({ name: 'test', action: 'allow' }.merge(params))
   end
 
-  it 'defaults to an allow rule for incoming traffic' do
+  it 'requires an action' do
+    expect { described_class.new(name: 'test') }.to raise_error(Puppet::ResourceError, %r{'action' is required})
+    expect { described_class.new(name: 'test', ensure: 'absent', to_port: 22) }.to raise_error(Puppet::ResourceError, %r{'action' is required})
+  end
+
+  it 'defaults to a rule for incoming traffic' do
     r = rule({})
     expect(r[:ensure]).to eq(:present)
-    expect(r[:action]).to eq('allow')
     expect(r[:direction]).to eq('in')
     expect(r[:proto]).to eq('any')
     expect(r[:from]).to eq('any')
@@ -52,6 +56,13 @@ describe Puppet::Type.type(:ufw_rule) do
     it "rejects #{desc}" do
       expect { rule(params) }.to raise_error(Puppet::ResourceError)
     end
+  end
+
+  it 'builds resources from the existing rules for `puppet resource`' do
+    provider = described_class.provider(:ufw)
+    allow(provider).to receive(:read_file).and_return(nil)
+    allow(provider).to receive(:read_file).with('/etc/ufw/user.rules').and_return("### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 in\n")
+    expect(described_class.instances.map(&:name)).to eq(['allow 22/tcp'])
   end
 
   describe 'relationships' do

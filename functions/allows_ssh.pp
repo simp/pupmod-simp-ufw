@@ -34,7 +34,7 @@ function ufw::allows_ssh(
 
     (
       pick($opts['ensure'], 'present') == 'present'
-      and pick($opts['action'], 'allow') in ['allow', 'limit']
+      and $opts['action'] in ['allow', 'limit']
       and !pick($opts['route'], false)
       and pick($opts['direction'], 'in') == 'in'
       and (

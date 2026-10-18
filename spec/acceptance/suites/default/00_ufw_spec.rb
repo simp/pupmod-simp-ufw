@@ -21,14 +21,14 @@ FULL_PARAMS = {
   'logging' => 'low',
   'ipv6' => true,
   'rules_entries' => {
-    'ssh' => { 'to_port' => 22, 'proto' => 'tcp' },
-    'loopback in' => { 'interface' => 'lo' },
-    'loopback out' => { 'interface' => 'lo', 'direction' => 'out' },
+    'ssh' => { 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' },
+    'loopback in' => { 'action' => 'allow', 'interface' => 'lo' },
+    'loopback out' => { 'action' => 'allow', 'interface' => 'lo', 'direction' => 'out' },
     'deny spoofed loopback v4' => { 'action' => 'deny', 'from' => '127.0.0.0/8' },
     'deny spoofed loopback v6' => { 'action' => 'deny', 'from' => '::1' },
-    'dns out' => { 'direction' => 'out', 'to_port' => 53 },
-    'web out' => { 'direction' => 'out', 'to_port' => [80, 443], 'proto' => 'tcp' },
-    'ntp out' => { 'direction' => 'out', 'to_port' => 123, 'proto' => 'udp' },
+    'dns out' => { 'action' => 'allow', 'direction' => 'out', 'to_port' => 53 },
+    'web out' => { 'action' => 'allow', 'direction' => 'out', 'to_port' => [80, 443], 'proto' => 'tcp' },
+    'ntp out' => { 'action' => 'allow', 'direction' => 'out', 'to_port' => 123, 'proto' => 'udp' },
   },
 }.freeze
 
@@ -100,7 +100,7 @@ describe 'ufw class' do
 
       context 'when enabling ufw with no rule allowing SSH' do
         it 'fails to compile' do
-          manifest = ufw_manifest('enabled' => true, 'rules_entries' => { 'web' => { 'to_port' => 443, 'proto' => 'tcp' } })
+          manifest = ufw_manifest('enabled' => true, 'rules_entries' => { 'web' => { 'action' => 'allow', 'to_port' => 443, 'proto' => 'tcp' } })
           result = apply_manifest_on(host, manifest, expect_failures: true)
           expect(result.stderr).to include("refusing to enable ufw with a 'deny' incoming policy")
         end
@@ -108,6 +108,14 @@ describe 'ufw class' do
         it 'changes nothing' do
           expect(on(host, 'ufw status').stdout).to match(%r{^Status: inactive})
           expect(show_added).not_to include('443')
+        end
+      end
+
+      context 'with a rule that has no action' do
+        it 'fails to compile' do
+          result = apply_manifest_on(host, ufw_manifest('rules_entries' => { 'everything' => {} }), expect_failures: true)
+          expect(result.stderr).to include("every ufw::rules_entries entry needs an 'action'")
+          expect(show_added).to include('(None)')
         end
       end
 
@@ -165,11 +173,11 @@ describe 'ufw class' do
         before(:context) { on(host, 'ufw allow 8443/tcp') }
 
         it 'recognizes the equivalent rule' do
-          apply_manifest_on(host, full_manifest('alt https' => { 'to_port' => '8443', 'proto' => 'tcp' }), catch_changes: true)
+          apply_manifest_on(host, full_manifest('alt https' => { 'action' => 'allow', 'to_port' => '8443', 'proto' => 'tcp' }), catch_changes: true)
         end
 
         it 'removes it with ensure => absent' do
-          apply_manifest_on(host, full_manifest('alt https' => { 'ensure' => 'absent', 'to_port' => 8443, 'proto' => 'tcp' }), catch_failures: true)
+          apply_manifest_on(host, full_manifest('alt https' => { 'ensure' => 'absent', 'action' => 'allow', 'to_port' => 8443, 'proto' => 'tcp' }), catch_failures: true)
           expect(show_added).not_to include('8443')
         end
       end
@@ -206,8 +214,8 @@ describe 'ufw class' do
       context 'with a routed rule and an application rule' do
         let(:rules) do
           {
-            'routed' => { 'route' => true, 'interface' => 'lo', 'out_interface' => 'lo', 'to' => '10.0.0.0/8', 'to_port' => 80, 'proto' => 'tcp' },
-            'openssh' => { 'from' => '192.168.0.0/16', 'to_app' => 'OpenSSH', 'log' => 'log' },
+            'routed' => { 'action' => 'allow', 'route' => true, 'interface' => 'lo', 'out_interface' => 'lo', 'to' => '10.0.0.0/8', 'to_port' => 80, 'proto' => 'tcp' },
+            'openssh' => { 'action' => 'allow', 'from' => '192.168.0.0/16', 'to_app' => 'OpenSSH', 'log' => 'log' },
           }
         end
 

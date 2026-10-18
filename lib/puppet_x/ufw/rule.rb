@@ -198,7 +198,7 @@ module PuppetX # rubocop:disable Style/ClassAndModuleChildren
           {
             v6: v6,
             forward: [true, :true, 'true'].include?(opts[:route]),
-            action: (opts[:action] || 'allow').to_s,
+            action: opts[:action].to_s,
             logtype: opts[:log].to_s,
             proto: (opts[:proto] || 'any').to_s,
             dport: normalize_ports(opts[:to_port]) || 'any',
@@ -239,7 +239,7 @@ module PuppetX # rubocop:disable Style/ClassAndModuleChildren
         args = []
         args << 'route' if [true, :true, 'true'].include?(opts[:route])
         args << 'delete' if delete
-        args << (opts[:action] || 'allow').to_s
+        args << opts[:action].to_s
 
         direction = (opts[:direction] || 'in').to_s
         if opts[:interface]

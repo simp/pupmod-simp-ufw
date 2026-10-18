@@ -13,7 +13,7 @@ describe provider_class do
   end
 
   def provider_for(params)
-    resource = Puppet::Type.type(:ufw_rule).new({ name: 'test' }.merge(params))
+    resource = Puppet::Type.type(:ufw_rule).new({ name: 'test', action: 'allow' }.merge(params))
     described_class.prefetch('test' => resource)
     resource.provider
   end

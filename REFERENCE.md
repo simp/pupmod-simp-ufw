@@ -72,12 +72,12 @@ class { 'ufw':
   default_routed   => 'deny',
   logging          => 'low',
   rules_entries    => {
-    'ssh'           => { 'to_port' => 22, 'proto' => 'tcp' },
-    'lo in'         => { 'interface' => 'lo' },
-    'lo out'        => { 'interface' => 'lo', 'direction' => 'out' },
-    'deny 127/8'    => { 'action' => 'deny', 'from' => '127.0.0.0/8' },
-    'deny ::1'      => { 'action' => 'deny', 'from' => '::1' },
-    'dns out'       => { 'direction' => 'out', 'to_port' => 53 },
+    'ssh'        => { 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' },
+    'lo in'      => { 'action' => 'allow', 'interface' => 'lo' },
+    'lo out'     => { 'action' => 'allow', 'interface' => 'lo', 'direction' => 'out' },
+    'deny 127/8' => { 'action' => 'deny', 'from' => '127.0.0.0/8' },
+    'deny ::1'   => { 'action' => 'deny', 'from' => '::1' },
+    'dns out'    => { 'action' => 'allow', 'direction' => 'out', 'to_port' => 53 },
   },
 }
 ```
@@ -229,18 +229,24 @@ Default value: `undef`
 Data type: `Hash[String[1], Ufw::RuleOptions]`
 
 ufw rules, each name mapped to the parameters of a `ufw_rule`. Merged
-across Hiera layers with a deep merge. `ensure => absent` removes a rule;
-removing an entry from the Hash leaves its rule alone.
+across Hiera layers with a deep merge. Every entry must set `action`,
+including `ensure => absent` entries (ufw only deletes a rule whose action
+matches), so an incomplete entry fails compilation rather than becoming a
+broader rule. `ensure => absent` removes a rule; removing an entry from
+the Hash leaves its rule alone.
 
 @example
   ufw::rules_entries:
     ssh:
+      action: allow
       to_port: 22
       proto: tcp
     allow in on lo:
+      action: allow
       interface: lo
     old web rule:
       ensure: absent
+      action: allow
       to_port: 80
       proto: tcp
 
@@ -300,6 +306,7 @@ existing one only in those, which ufw replaces in place.
 
 ```puppet
 ufw_rule { 'ssh from admin net':
+  action  => 'allow',
   from    => '10.0.0.0/8',
   to_port => 22,
   proto   => 'tcp',
@@ -311,6 +318,7 @@ ufw_rule { 'ssh from admin net':
 
 ```puppet
 ufw_rule { 'allow in on lo':
+  action    => 'allow',
   interface => 'lo',
 }
 ```
@@ -356,9 +364,8 @@ The following parameters are available in the `ufw_rule` type.
 
 Valid values: `allow`, `deny`, `reject`, `limit`
 
-What to do with matching packets.
-
-Default value: `allow`
+What to do with matching packets. Required, also for `ensure => absent`,
+since ufw only deletes a rule whose action matches.
 
 ##### <a name="-ufw_rule--direction"></a>`direction`
 
@@ -543,9 +550,13 @@ Alias of `Enum['any', 'tcp', 'udp', 'ipv6', 'esp', 'ah', 'igmp', 'gre', 'vrrp']`
 
 ### <a name="Ufw--RuleOptions"></a>`Ufw::RuleOptions`
 
-Each key is a parameter of the `ufw_rule` type. An empty Hash is an
-`allow` rule for all incoming traffic, so every real rule sets at least
-one of the matching options.
+Each key is a parameter of the `ufw_rule` type. `action` is required,
+including for `ensure => absent` entries, since ufw only deletes a rule
+whose action matches. Class `ufw` fails compilation for an entry without
+one, naming the entry, so a partly written entry can't turn into a rule
+that allows all traffic. (The key is optional here only so that an empty
+entry gets that message rather than Puppet's "expects size to be between
+1 and 15, got 0".)
 
 Alias of
 

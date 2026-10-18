@@ -126,9 +126,9 @@ describe 'ufw' do
             logging: 'low',
             ipv6: true,
             rules_entries: {
-              'ssh' => { 'to_port' => 22, 'proto' => 'tcp' },
-              'lo in' => { 'interface' => 'lo' },
-              'old' => { 'ensure' => 'absent', 'to_port' => 23, 'proto' => 'tcp' },
+              'ssh' => { 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' },
+              'lo in' => { 'action' => 'allow', 'interface' => 'lo' },
+              'old' => { 'ensure' => 'absent', 'action' => 'allow', 'to_port' => 23, 'proto' => 'tcp' },
             },
           }
         end
@@ -167,8 +167,26 @@ describe 'ufw' do
         it { is_expected.to contain_package('netfilter-persistent').with_ensure('installed') }
       end
 
+      context 'with a rule without an action' do
+        let(:params) { { rules_entries: { 'everything' => {} } } }
+
+        it { is_expected.to compile.and_raise_error(%r{needs an 'action' .* Missing in: everything}) }
+      end
+
+      context 'with a removal without an action' do
+        let(:params) { { rules_entries: { 'old' => { 'ensure' => 'absent', 'to_port' => 23 } } } }
+
+        it { is_expected.to compile.and_raise_error(%r{needs an 'action' .* Missing in: old}) }
+      end
+
+      context 'with an explicit rule allowing all incoming traffic' do
+        let(:params) { { rules_entries: { 'everything' => { 'action' => 'allow' } } } }
+
+        it { is_expected.to contain_ufw_rule('everything').with_action('allow') }
+      end
+
       context 'with a typo in a rule' do
-        let(:params) { { rules_entries: { 'ssh' => { 'to_prot' => 22 } } } }
+        let(:params) { { rules_entries: { 'ssh' => { 'action' => 'allow', 'to_prot' => 22 } } } }
 
         it { is_expected.to compile.and_raise_error(%r{unrecognized key 'to_prot'}) }
       end
@@ -177,7 +195,7 @@ describe 'ufw' do
         let(:base) { { enabled: true } }
 
         context 'with no rule allowing SSH' do
-          let(:params) { base.merge(rules_entries: { 'web' => { 'to_port' => 443, 'proto' => 'tcp' } }) }
+          let(:params) { base.merge(rules_entries: { 'web' => { 'action' => 'allow', 'to_port' => 443, 'proto' => 'tcp' } }) }
 
           it { is_expected.to compile.and_raise_error(%r{refusing to enable ufw with a 'deny' incoming policy}) }
         end
@@ -207,13 +225,13 @@ describe 'ufw' do
         end
 
         context 'with the OpenSSH app allowed' do
-          let(:params) { base.merge(rules_entries: { 'ssh' => { 'to_app' => 'OpenSSH' } }) }
+          let(:params) { base.merge(rules_entries: { 'ssh' => { 'action' => 'allow', 'to_app' => 'OpenSSH' } }) }
 
           it { is_expected.to compile.with_all_deps }
         end
 
         context 'with SSH on another port' do
-          let(:rules) { { 'ssh' => { 'to_port' => '2200:2300', 'proto' => 'tcp' } } }
+          let(:rules) { { 'ssh' => { 'action' => 'allow', 'to_port' => '2200:2300', 'proto' => 'tcp' } } }
 
           context 'and the default lockout_guard_port' do
             let(:params) { base.merge(rules_entries: rules) }
@@ -229,7 +247,7 @@ describe 'ufw' do
         end
 
         context 'with the SSH rule being removed' do
-          let(:params) { base.merge(rules_entries: { 'ssh' => { 'ensure' => 'absent', 'to_port' => 22, 'proto' => 'tcp' } }) }
+          let(:params) { base.merge(rules_entries: { 'ssh' => { 'ensure' => 'absent', 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' } }) }
 
           it { is_expected.to compile.and_raise_error(%r{refusing to enable ufw}) }
         end

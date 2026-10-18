@@ -85,11 +85,14 @@ ufw::default_routed: deny
 ufw::logging: low
 ufw::rules_entries:
   ssh:
+    action: allow
     to_port: 22
     proto: tcp
   loopback in:
+    action: allow
     interface: lo
   loopback out:
+    action: allow
     interface: lo
     direction: out
   deny spoofed loopback v4:
@@ -99,9 +102,11 @@ ufw::rules_entries:
     action: deny
     from: '::1'
   dns out:
+    action: allow
     direction: out
     to_port: 53
   web out:
+    action: allow
     direction: out
     to_port: [80, 443]
     proto: tcp
@@ -114,6 +119,7 @@ Each entry of `ufw::rules_entries` maps a name to the parameters of a
 
 ```puppet
 ufw_rule { 'web from the office':
+  action  => 'allow',
   from    => '192.0.2.0/24',
   to_port => [80, 443],
   proto   => 'tcp',
@@ -122,17 +128,38 @@ ufw_rule { 'web from the office':
 ```
 
 The parameters follow ufw's extended rule syntax: `action` (`allow`, `deny`,
-`reject` or `limit`), `route` (a `ufw route` rule), `direction` (`in` or
+`reject` or `limit`; required), `route` (a `ufw route` rule), `direction` (`in` or
 `out`), `interface` (and `out_interface` for routed rules), `log` (`log` or
 `log-all`), `proto`, `from`, `to`, `from_port`, `to_port`, `from_app`,
 `to_app` (an application profile such as `OpenSSH`) and `comment`. Unknown
-keys and invalid values in `ufw::rules_entries` fail catalog compilation. An
-entry with no options (`{}`) allows all incoming traffic.
+keys and invalid values in `ufw::rules_entries` fail catalog compilation.
+
+`action` has no default and is required in every entry, including
+`ensure: absent` ones, since ufw only deletes a rule whose action matches. An
+incomplete entry (for example `{}`, or one whose `action` a higher Hiera layer
+didn't supply) therefore fails compilation instead of becoming a rule that
+allows everything. A rule that allows all incoming traffic has to say so:
+
+```yaml
+ufw::rules_entries:
+  allow everything in:
+    action: allow
+```
 
 `ufw::rules_entries` is merged across Hiera layers with a deep merge, so a
 layer can add a rule or remove one (`ensure: absent`) without restating the
 others. Deleting an entry stops Puppet managing the rule but leaves it in
-place.
+place. Removing a rule takes the options it was added with, `action`
+included:
+
+```yaml
+ufw::rules_entries:
+  old web rule:
+    ensure: absent
+    action: allow
+    to_port: 80
+    proto: tcp
+```
 
 Rules are matched against ufw's own rule store (`/etc/ufw/user.rules` and
 `user6.rules`) in ufw's normalized form, so a rule added by hand in an

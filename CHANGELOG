@@ -4,7 +4,8 @@
   parameter is set
 - Manages ufw's enabled state, default policies, logging level, IPv6 support
   and service
-- Manages ufw rules with `ufw::rules_entries` and the new `ufw_rule` type
+- Manages ufw rules with `ufw::rules_entries` and the new `ufw_rule` type;
+  every rule must set `action`
 - Removes conflicting packages such as `iptables-persistent` when asked to,
   with `ufw::conflicting_packages_entries`
 - Fails compilation when enabling ufw would block incoming SSH, unless

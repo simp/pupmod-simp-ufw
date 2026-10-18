@@ -69,18 +69,24 @@
 #
 # @param rules_entries
 #   ufw rules, each name mapped to the parameters of a `ufw_rule`. Merged
-#   across Hiera layers with a deep merge. `ensure => absent` removes a rule;
-#   removing an entry from the Hash leaves its rule alone.
+#   across Hiera layers with a deep merge. Every entry must set `action`,
+#   including `ensure => absent` entries (ufw only deletes a rule whose action
+#   matches), so an incomplete entry fails compilation rather than becoming a
+#   broader rule. `ensure => absent` removes a rule; removing an entry from
+#   the Hash leaves its rule alone.
 #
 #   @example
 #     ufw::rules_entries:
 #       ssh:
+#         action: allow
 #         to_port: 22
 #         proto: tcp
 #       allow in on lo:
+#         action: allow
 #         interface: lo
 #       old web rule:
 #         ensure: absent
+#         action: allow
 #         to_port: 80
 #         proto: tcp
 #
@@ -110,12 +116,12 @@
 #     default_routed   => 'deny',
 #     logging          => 'low',
 #     rules_entries    => {
-#       'ssh'           => { 'to_port' => 22, 'proto' => 'tcp' },
-#       'lo in'         => { 'interface' => 'lo' },
-#       'lo out'        => { 'interface' => 'lo', 'direction' => 'out' },
-#       'deny 127/8'    => { 'action' => 'deny', 'from' => '127.0.0.0/8' },
-#       'deny ::1'      => { 'action' => 'deny', 'from' => '::1' },
-#       'dns out'       => { 'direction' => 'out', 'to_port' => 53 },
+#       'ssh'        => { 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' },
+#       'lo in'      => { 'action' => 'allow', 'interface' => 'lo' },
+#       'lo out'     => { 'action' => 'allow', 'interface' => 'lo', 'direction' => 'out' },
+#       'deny 127/8' => { 'action' => 'deny', 'from' => '127.0.0.0/8' },
+#       'deny ::1'   => { 'action' => 'deny', 'from' => '::1' },
+#       'dns out'    => { 'action' => 'allow', 'direction' => 'out', 'to_port' => 53 },
 #     },
 #   }
 #
@@ -139,6 +145,14 @@ class ufw (
   Boolean                              $allow_lockout                = false,
   Stdlib::Port                         $lockout_guard_port           = 22,
 ) {
+  $_no_action = $rules_entries.filter |$name, $opts| { $opts['action'] =~ Undef }.keys
+  unless $_no_action.empty {
+    fail(@("FAIL"/L)
+      ufw: every ufw::rules_entries entry needs an 'action' (allow, deny, reject or limit),       including 'ensure: absent' entries. Missing in: ${_no_action.sort.join(', ')}
+      |-FAIL
+    )
+  }
+
   if $enabled == true and !$allow_lockout and pick($default_incoming, 'deny') != 'allow' {
     unless ufw::allows_ssh($rules_entries, $lockout_guard_port) {
       fail(@("FAIL"/L)

@@ -24,6 +24,7 @@ Puppet::Type.newtype(:ufw_rule) do
 
     @example Allow SSH from an admin network
       ufw_rule { 'ssh from admin net':
+        action  => 'allow',
         from    => '10.0.0.0/8',
         to_port => 22,
         proto   => 'tcp',
@@ -32,6 +33,7 @@ Puppet::Type.newtype(:ufw_rule) do
 
     @example Allow loopback traffic
       ufw_rule { 'allow in on lo':
+        action    => 'allow',
         interface => 'lo',
       }
   DOC
@@ -47,9 +49,11 @@ Puppet::Type.newtype(:ufw_rule) do
   end
 
   newparam(:action) do
-    desc 'What to do with matching packets.'
+    desc <<~DESC
+      What to do with matching packets. Required, also for `ensure => absent`,
+      since ufw only deletes a rule whose action matches.
+    DESC
     newvalues('allow', 'deny', 'reject', 'limit')
-    defaultto 'allow'
     munge(&:to_s)
   end
 
@@ -172,6 +176,12 @@ Puppet::Type.newtype(:ufw_rule) do
   end
 
   validate do
+    # `puppet resource ufw_rule` builds resources from the provider's
+    # instances with nothing but a name, so only check what was declared.
+    next if (original_parameters.keys - [:name, :provider]).empty? && provider&.get(:ensure) == :present
+
+    raise ArgumentError, "ufw_rule[#{self[:name]}]: 'action' is required (allow, deny, reject or limit)" if self[:action].nil?
+
     route = [true, :true].include?(self[:route])
     proto = self[:proto].to_s
     has_app = self[:from_app] || self[:to_app]

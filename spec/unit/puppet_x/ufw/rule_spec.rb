@@ -75,7 +75,7 @@ describe PuppetX::Ufw::Rule do
     end
 
     it 'renders an outgoing application rule' do
-      expect(described_class.command_args({ direction: 'out', to: '10.0.0.1', to_app: 'Web Full' }))
+      expect(described_class.command_args({ action: 'allow', direction: 'out', to: '10.0.0.1', to_app: 'Web Full' }))
         .to eq(['allow', 'out', 'from', 'any', 'to', '10.0.0.1', 'app', 'Web Full'])
     end
 
@@ -89,12 +89,12 @@ describe PuppetX::Ufw::Rule do
     let(:have) { described_class.parse_tuple('### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 OpenSSH - in comment=6869', false) }
 
     it 'matches an application rule by name, whatever its ports and comment' do
-      want = described_class.desired_tuples({ to_app: 'OpenSSH' }, false).first
+      want = described_class.desired_tuples({ action: 'allow', to_app: 'OpenSSH' }, false).first
       expect(described_class.match?(want, have)).to be true
     end
 
     it 'does not match a port rule against an application rule' do
-      want = described_class.desired_tuples({ to_port: '22', proto: 'tcp' }, false).first
+      want = described_class.desired_tuples({ action: 'allow', to_port: '22', proto: 'tcp' }, false).first
       expect(described_class.match?(want, have)).to be false
     end
 
