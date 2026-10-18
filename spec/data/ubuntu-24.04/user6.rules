@@ -1,0 +1,73 @@
+*filter
+:ufw6-user-input - [0:0]
+:ufw6-user-output - [0:0]
+:ufw6-user-forward - [0:0]
+:ufw6-before-logging-input - [0:0]
+:ufw6-before-logging-output - [0:0]
+:ufw6-before-logging-forward - [0:0]
+:ufw6-user-logging-input - [0:0]
+:ufw6-user-logging-output - [0:0]
+:ufw6-user-logging-forward - [0:0]
+:ufw6-after-logging-input - [0:0]
+:ufw6-after-logging-output - [0:0]
+:ufw6-after-logging-forward - [0:0]
+:ufw6-logging-deny - [0:0]
+:ufw6-logging-allow - [0:0]
+### RULES ###
+
+### tuple ### allow tcp 22 ::/0 any ::/0 in
+-A ufw6-user-input -p tcp --dport 22 -j ACCEPT
+
+### tuple ### allow any any ::/0 any ::/0 in_lo
+-A ufw6-user-input -i lo -j ACCEPT
+
+### tuple ### allow any any ::/0 any ::/0 out_lo
+-A ufw6-user-output -o lo -j ACCEPT
+
+### tuple ### deny any any ::/0 any ::1 in
+-A ufw6-user-input -s ::1 -j DROP
+
+### tuple ### allow any 53 ::/0 any ::/0 out
+-A ufw6-user-output -p tcp --dport 53 -j ACCEPT
+-A ufw6-user-output -p udp --dport 53 -j ACCEPT
+
+### tuple ### allow tcp 443 ::/0 any ::/0 out comment=6874747073206f7574
+-A ufw6-user-output -p tcp --dport 443 -j ACCEPT
+
+### tuple ### reject tcp 25 ::/0 any 2001:db8::/32 in_eth0
+-A ufw6-user-input -i eth0 -p tcp --dport 25 -s 2001:db8::/32 -j REJECT --reject-with tcp-reset
+
+### tuple ### allow_log tcp 2223 ::/0 any ::/0 in
+-A ufw6-user-logging-input -p tcp --dport 2223 -m conntrack --ctstate NEW -m limit --limit 3/min --limit-burst 10 -j LOG --log-prefix "[UFW ALLOW] "
+-A ufw6-user-logging-input -p tcp --dport 2223 -j RETURN
+-A ufw6-user-input -p tcp --dport 2223 -j ufw6-user-logging-input
+-A ufw6-user-input -p tcp --dport 2223 -j ACCEPT
+
+### tuple ### route:deny any any ::/0 any ::/0 in_eth2
+-A ufw6-user-forward -i eth2 -j DROP
+
+### tuple ### allow udp 60000:61000 ::/0 any ::/0 in
+-A ufw6-user-input -p udp -m multiport --dports 60000:61000 -j ACCEPT
+
+### tuple ### allow tcp 22 ::/0 any ::/0 OpenSSH - in
+-A ufw6-user-input -p tcp --dport 22 -j ACCEPT -m comment --comment 'dapp_OpenSSH'
+
+### tuple ### allow tcp 22 ::/0 any ::/0 OpenSSH - in_eth0
+-A ufw6-user-input -i eth0 -p tcp --dport 22 -j ACCEPT -m comment --comment 'dapp_OpenSSH'
+
+### tuple ### allow tcp 80,443 ::/0 any ::/0 Web%20Full - in
+-A ufw6-user-input -p tcp -m multiport --dports 80,443 -j ACCEPT -m comment --comment 'dapp_Web%20Full'
+
+### tuple ### allow tcp 443 2001:db8:2::1 any 2001:db8:1::/48 in
+-A ufw6-user-input -p tcp -d 2001:db8:2::1 --dport 443 -s 2001:db8:1::/48 -j ACCEPT
+
+### END RULES ###
+
+### LOGGING ###
+-A ufw6-after-logging-input -j LOG --log-prefix "[UFW BLOCK] " -m limit --limit 3/min --limit-burst 10
+-A ufw6-after-logging-forward -j LOG --log-prefix "[UFW BLOCK] " -m limit --limit 3/min --limit-burst 10
+-I ufw6-logging-deny -m conntrack --ctstate INVALID -j RETURN -m limit --limit 3/min --limit-burst 10
+-A ufw6-logging-deny -j LOG --log-prefix "[UFW BLOCK] " -m limit --limit 3/min --limit-burst 10
+-A ufw6-logging-allow -j LOG --log-prefix "[UFW ALLOW] " -m limit --limit 3/min --limit-burst 10
+### END LOGGING ###
+COMMIT

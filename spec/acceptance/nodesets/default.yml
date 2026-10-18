@@ -1,0 +1,18 @@
+---
+HOSTS:
+  ubuntu2404:
+    roles:
+    - default
+    - master
+    - server
+    platform: ubuntu-24.04-amd64
+    box: bento/ubuntu-24.04
+    hypervisor: "<%= ENV.fetch('BEAKER_HYPERVISOR', 'vagrant') %>"
+    vagrant_memsize: 2048
+    vagrant_cpus: 2
+    # Beaker copies modules over SSH; no shared folder is needed
+    synced_folder: disabled
+CONFIG:
+  log_level: verbose
+  type: aio
+  puppet_collection: "<%= ENV.fetch('BEAKER_PUPPET_COLLECTION', 'openvox9') %>"

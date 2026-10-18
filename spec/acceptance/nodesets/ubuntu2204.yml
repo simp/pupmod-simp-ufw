@@ -1,0 +1,29 @@
+---
+HOSTS:
+  ubuntu2204:
+    roles:
+    - default
+    - master
+    - server
+    platform: ubuntu-22.04-amd64
+    box: bento/ubuntu-22.04
+    hypervisor: "<%= ENV.fetch('BEAKER_HYPERVISOR', 'vagrant') %>"
+    vagrant_memsize: 2048
+    vagrant_cpus: 2
+    # Beaker copies modules over SSH; no shared folder is needed
+    synced_folder: disabled
+CONFIG:
+  log_level: verbose
+  type: aio
+  puppet_collection: "<%= ENV.fetch('BEAKER_PUPPET_COLLECTION', 'openvox9') %>"
+  # The bento/ubuntu-22.04 libvirt box boots with UEFI only, and its
+  # Vagrantfile selects the (slow) qemu driver. Beaker passes these options to
+  # the vagrant-libvirt provider of every host in this nodeset.
+  #
+  # The OVMF firmware path defaults to the first of Ubuntu's (the GitHub
+  # runner's `ovmf` package) and Fedora's (`edk2-ovmf`) that exists; set
+  # BEAKER_OVMF_CODE to use another.
+  libvirt:
+    driver: kvm
+    loader: "<%= ENV.fetch('BEAKER_OVMF_CODE') { ['/usr/share/OVMF/OVMF_CODE_4M.fd', '/usr/share/edk2/ovmf/OVMF_CODE.fd'].find { |f| File.exist?(f) } } %>"
+    nvram: /var/lib/libvirt/qemu/nvram/beaker_ubuntu2204_VARS.fd

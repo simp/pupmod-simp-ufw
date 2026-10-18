@@ -1,0 +1,4 @@
+---
+fixtures:
+  repositories:
+    stdlib: https://github.com/simp/puppetlabs-stdlib.git
