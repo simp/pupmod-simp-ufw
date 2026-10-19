@@ -1,0 +1,38 @@
+{
+  "name": "simp-ufw",
+  "version": "0.1.0",
+  "author": "SIMP Team",
+  "summary": "Manages the Uncomplicated Firewall (ufw)",
+  "license": "Apache-2.0",
+  "source": "https://github.com/simp/pupmod-simp-ufw",
+  "project_page": "https://github.com/simp/pupmod-simp-ufw",
+  "issues_url": "https://github.com/simp/pupmod-simp-ufw/issues",
+  "tags": [
+    "simp",
+    "ufw",
+    "firewall",
+    "stig",
+    "cis"
+  ],
+  "dependencies": [
+    {
+      "name": "puppetlabs/stdlib",
+      "version_requirement": ">= 8.0.0 < 11.0.0"
+    }
+  ],
+  "operatingsystem_support": [
+    {
+      "operatingsystem": "Ubuntu",
+      "operatingsystemrelease": [
+        "22.04",
+        "24.04"
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "name": "openvox",
+      "version_requirement": ">= 8.0.0 < 10.0.0"
+    }
+  ]
+}

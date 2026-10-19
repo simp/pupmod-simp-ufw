@@ -1,0 +1,11 @@
+---
+lookup_options:
+  ufw::rules_entries:
+    merge: deep
+  ufw::conflicting_packages_entries:
+    merge: deep
+
+# Defaults describe the newest supported release. Overrides for older
+# releases go in data/os/<os.name>-<os.release.major>.yaml.
+ufw::package_name: 'ufw'
+ufw::service_name: 'ufw'

@@ -1,0 +1,29 @@
+Added user rules (see 'ufw status' for running firewall):
+ufw allow 22/tcp
+ufw allow in on lo
+ufw allow out on lo
+ufw deny from 127.0.0.0/8
+ufw allow out 53
+ufw allow out 443/tcp comment 'https out'
+ufw limit 2222/tcp
+ufw allow from 10.0.0.0/8 to any port 8000:8100 proto tcp
+ufw allow from 192.168.1.0/24 to 192.168.1.5 port 80,443,8080:8090 proto tcp
+ufw allow log 2223/tcp
+ufw allow log-all from 1.2.3.4
+ufw deny out log to 203.0.113.0/24
+ufw route allow in on eth0 out on eth1 to 10.0.0.0/8 port 80 proto tcp
+ufw route deny in on eth2
+ufw route reject out on eth3 from 10.9.0.0/16
+ufw allow 60000:61000/udp
+ufw allow from 10.0.0.1 port 123 proto udp
+ufw deny from 1.2.3.4 proto ipv6
+ufw allow from 10.0.0.0/8 proto esp
+ufw allow OpenSSH
+ufw allow in on eth0 to any app OpenSSH
+ufw allow from 10.1.0.0/16 to any app OpenSSH comment 'admin net'
+ufw allow 'Web Full'
+ufw allow from 172.16.0.0/12 to any app 'Web Full'
+ufw allow out on eth0 to 8.8.8.8 port 53 proto udp comment 'say "dns"'
+ufw deny from ::1
+ufw reject in on eth0 from 2001:db8::/32 to any port 25 proto tcp
+ufw allow from 2001:db8:1::/48 to 2001:db8:2::1 port 443 proto tcp
