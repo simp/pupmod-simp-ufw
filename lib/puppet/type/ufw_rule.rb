@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'puppet/parameter/boolean'
 require_relative '../../puppet_x/ufw/rule'
 
 Puppet::Type.newtype(:ufw_rule) do
