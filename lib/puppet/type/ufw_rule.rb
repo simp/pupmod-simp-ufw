@@ -52,6 +52,12 @@ Puppet::Type.newtype(:ufw_rule) do
     desc <<~DESC
       What to do with matching packets. Required, also for `ensure => absent`,
       since ufw only deletes a rule whose action matches.
+
+      The exception is a resource with nothing but a name, or a name and
+      `ensure => absent`, as `puppet resource` builds: it refers to the rule
+      that `puppet resource ufw_rule` lists under that name. With
+      `ensure => absent` that rule is removed if it exists; otherwise the
+      resource is in sync when the rule exists and fails when it doesn't.
     DESC
     newvalues('allow', 'deny', 'reject', 'limit')
     munge(&:to_s)
@@ -176,9 +182,12 @@ Puppet::Type.newtype(:ufw_rule) do
   end
 
   validate do
-    # `puppet resource ufw_rule` builds resources from the provider's
-    # instances with nothing but a name, so only check what was declared.
-    next if (original_parameters.keys - [:name, :provider]).empty? && provider&.get(:ensure) == :present
+    # `puppet resource ufw_rule [NAME]` looks rules up by name, and
+    # `puppet resource ufw_rule NAME ensure=absent` removes the rule with that
+    # name. The provider takes those rules' options from the system, and
+    # refuses to add a rule without an action.
+    given = original_parameters.keys - [:name, :provider, :audit]
+    next if given.empty? || (given == [:ensure] && self[:ensure] == :absent)
 
     raise ArgumentError, "ufw_rule[#{self[:name]}]: 'action' is required (allow, deny, reject or limit)" if self[:action].nil?
 

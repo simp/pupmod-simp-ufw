@@ -65,6 +65,35 @@ describe provider_class do
         expect(described_class.instances.map(&:name)).not_to include('deny from ::1')
       end
 
+      it 'reports existing rules as present to `puppet resource`' do
+        ['allow 22/tcp', 'allow OpenSSH'].each do |name|
+          expect(Puppet::Resource.indirection.find("ufw_rule/#{name}")[:ensure].to_s).to eq('present'), name
+        end
+        expect(Puppet::Resource.indirection.find('ufw_rule/allow 9/tcp')[:ensure].to_s).to eq('absent')
+      end
+
+      it 'removes a rule by name, as `puppet resource ufw_rule NAME ensure=absent` does' do
+        resource = Puppet::Type.type(:ufw_rule).new(name: 'allow from 10.0.0.0/8 to any port 8000:8100 proto tcp', ensure: 'absent')
+        described_class.prefetch(resource.name => resource)
+        provider = resource.provider
+        expect(provider.exists?).to be true
+        expect(provider).to receive(:ufw).with('delete', 'allow', 'proto', 'tcp', 'from', '10.0.0.0/8', 'to', 'any', 'port', '8000:8100')
+        provider.destroy
+      end
+
+      it 'finds nothing to remove for an unknown name' do
+        resource = Puppet::Type.type(:ufw_rule).new(name: 'allow 9/tcp', ensure: 'absent')
+        described_class.prefetch(resource.name => resource)
+        expect(resource.provider.exists?).to be false
+      end
+
+      it 'refuses to add a rule by an unknown name' do
+        resource = Puppet::Type.type(:ufw_rule).new(name: 'allow 9/tcp')
+        described_class.prefetch(resource.name => resource)
+        expect(resource.provider).not_to receive(:ufw)
+        expect { resource.provider.create }.to raise_error(Puppet::Error, %r{no rule named 'allow 9/tcp'})
+      end
+
       it 'turns each rule back into a resource that matches it' do
         described_class.instances.each do |instance|
           params = instance.instance_variable_get(:@property_hash).reject { |k, _| [:name, :ensure, :comment].include?(k) }

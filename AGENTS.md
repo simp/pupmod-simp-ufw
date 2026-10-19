@@ -17,8 +17,10 @@ are removed only with `ensure => absent`.
 ### Business logic
 
 - **`manifests/init.pp`** (class `ufw`) — the only class.
-  - `package_name`, `service_name`, `ufw_command`, `defaults_file`,
-    `conf_file` come from module data (`hiera.yaml` + `data/common.yaml`).
+  - `package_name` and `service_name` come from module data (`hiera.yaml` +
+    `data/common.yaml`). ufw's own file paths (`/etc/default/ufw`,
+    `/etc/ufw/ufw.conf`, the rule files) are compiled into ufw, so they are
+    constants shared by the class and the provider, not parameters.
     OS differences go in data (`data/os/<os.name>-<release.major>.yaml`),
     never in manifest conditionals.
   - `package_ensure` falls back to `simp_options::package_ensure`, then

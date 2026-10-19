@@ -9,6 +9,3 @@ lookup_options:
 # releases go in data/os/<os.name>-<os.release.major>.yaml.
 ufw::package_name: 'ufw'
 ufw::service_name: 'ufw'
-ufw::ufw_command: '/usr/sbin/ufw'
-ufw::defaults_file: '/etc/default/ufw'
-ufw::conf_file: '/etc/ufw/ufw.conf'

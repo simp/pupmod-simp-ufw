@@ -8,5 +8,5 @@
   every rule must set `action`
 - Removes conflicting packages such as `iptables-persistent` when asked to,
   with `ufw::conflicting_packages_entries`
-- Fails compilation when enabling ufw would block incoming SSH, unless
-  `ufw::allow_lockout` is set
+- Fails compilation when enabling ufw, or setting a denying incoming policy,
+  would block incoming SSH, unless `ufw::allow_lockout` is set

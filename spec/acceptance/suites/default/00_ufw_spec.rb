@@ -111,6 +111,14 @@ describe 'ufw class' do
         end
       end
 
+      context 'when setting a denying incoming policy with no rule allowing SSH' do
+        it 'fails to compile' do
+          result = apply_manifest_on(host, ufw_manifest('default_incoming' => 'reject'), expect_failures: true)
+          expect(result.stderr).to include("refusing to set a 'reject' incoming policy")
+          expect(on(host, 'grep ^DEFAULT_INPUT_POLICY= /etc/default/ufw').stdout).not_to include('REJECT')
+        end
+      end
+
       context 'with a rule that has no action' do
         it 'fails to compile' do
           result = apply_manifest_on(host, ufw_manifest('rules_entries' => { 'everything' => {} }), expect_failures: true)
@@ -179,6 +187,23 @@ describe 'ufw class' do
         it 'removes it with ensure => absent' do
           apply_manifest_on(host, full_manifest('alt https' => { 'ensure' => 'absent', 'action' => 'allow', 'to_port' => 8443, 'proto' => 'tcp' }), catch_failures: true)
           expect(show_added).not_to include('8443')
+        end
+      end
+
+      context 'with puppet resource' do
+        before(:context) { on(host, 'ufw allow 8444/tcp') }
+
+        it 'lists an existing rule as present' do
+          expect(on(host, "puppet resource ufw_rule 'allow 8444/tcp'").stdout).to match(%r{ensure\s+=> 'present'})
+        end
+
+        it 'reports an unknown rule as absent' do
+          expect(on(host, "puppet resource ufw_rule 'allow 8445/tcp'").stdout).to match(%r{ensure\s+=> 'absent'})
+        end
+
+        it 'removes a rule by name' do
+          on(host, "puppet resource ufw_rule 'allow 8444/tcp' ensure=absent")
+          expect(show_added).not_to include('8444')
         end
       end
 

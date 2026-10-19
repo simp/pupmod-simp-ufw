@@ -174,9 +174,11 @@ rule order.
 
 ### The lockout guard
 
-Enabling ufw with an incoming policy that denies traffic, and no rule
-allowing SSH, would cut off remote access. When `ufw::enabled` is `true`,
-catalog compilation fails unless one of these holds:
+Enabling ufw with an incoming policy that denies traffic, or setting that
+policy while ufw is active, with no rule allowing SSH, would cut off remote
+access. Catalog compilation fails when `ufw::enabled` is `true`, or when
+`ufw::default_incoming` is set to `deny` or `reject` and `ufw::enabled` isn't
+`false`, unless one of these holds:
 
 * `ufw::default_incoming` is `allow`;
 * an entry in `ufw::rules_entries` allows incoming SSH: an `allow` or `limit`
@@ -187,7 +189,9 @@ catalog compilation fails unless one of these holds:
 * `ufw::allow_lockout` is `true`.
 
 An unset `ufw::default_incoming` counts as `deny`, which is ufw's packaged
-default. Rules that exist on the node but aren't in `ufw::rules_entries`
+default. Whether ufw is already active can't be known at compile time, so
+setting a denying incoming policy is guarded even when `ufw::enabled` is
+unset. Rules that exist on the node but aren't in `ufw::rules_entries`
 can't be seen at compile time and don't count; set `ufw::allow_lockout` when
 SSH is allowed that way.
 
@@ -217,6 +221,11 @@ supported operating systems, Puppet versions, and module dependencies.
   doesn't forward packets; `ufw::default_routed` is still stored and applies
   once forwarding is turned on.
 * ufw doesn't allow `'` in rule comments.
+* In an unprivileged container, ufw can't probe the kernel and skips the IPv6
+  half of a `limit` rule, so with IPv6 enabled, Puppet adds that rule again on
+  every run. ufw can't enable the firewall there either.
+* A `ufw_rule` declared outside class `ufw` autorequires `Package['ufw']`,
+  whatever `ufw::package_name` is set to.
 * Changing `ufw::ipv6` on an enabled firewall runs `ufw reload`. Rules with
   IPv6 addresses need IPv6 enabled.
 

@@ -8,8 +8,14 @@ describe Puppet::Type.type(:ufw_rule) do
   end
 
   it 'requires an action' do
-    expect { described_class.new(name: 'test') }.to raise_error(Puppet::ResourceError, %r{'action' is required})
+    expect { described_class.new(name: 'test', to_port: 22) }.to raise_error(Puppet::ResourceError, %r{'action' is required})
     expect { described_class.new(name: 'test', ensure: 'absent', to_port: 22) }.to raise_error(Puppet::ResourceError, %r{'action' is required})
+  end
+
+  it 'accepts a name alone, or with ensure => absent, to refer to an existing rule' do
+    expect { described_class.new(name: 'allow 22/tcp') }.not_to raise_error
+    expect { described_class.new(name: 'allow 22/tcp', ensure: 'absent') }.not_to raise_error
+    expect { described_class.new(name: 'allow 22/tcp', ensure: 'present') }.to raise_error(Puppet::ResourceError, %r{'action' is required})
   end
 
   it 'defaults to a rule for incoming traffic' do

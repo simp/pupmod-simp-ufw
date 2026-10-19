@@ -61,18 +61,36 @@ Puppet::Type.type(:ufw_rule).provide(:ufw) do
     }.values
   end
 
+  # A resource without an `action` is one `puppet resource` built from a rule
+  # name (`puppet resource ufw_rule 'allow 22/tcp' ensure=absent`). It gets
+  # the provider of the existing rule with that name, if there is one.
   def self.prefetch(resources)
     state = rule_state
+    existing = nil
     resources.each_value do |resource|
-      resource.provider = new(name: resource.name, state: state)
+      if resource[:action].nil?
+        existing ||= instances
+        found = existing.find { |p| p.name == resource.name }
+        resource.provider = new((found ? found.properties : { name: resource.name }).merge(state: state))
+      else
+        resource.provider = new(name: resource.name, state: state)
+      end
     end
   end
 
+  # What was read from the system for a provider built by `instances`
+  def properties
+    @property_hash.dup
+  end
+
+  # The rule's options: as declared, or for a resource without an `action`
+  # (see `prefetch`), as read from the system.
   def rule_options
+    source = (resource.nil? || resource[:action].nil?) ? @property_hash : resource
     opts = {}
     [:action, :route, :direction, :interface, :out_interface, :log, :proto,
      :from, :to, :from_port, :to_port, :from_app, :to_app].each do |param|
-      opts[param] = resource[param] unless resource[param].nil?
+      opts[param] = source[param] unless source[param].nil?
     end
     opts
   end
@@ -91,6 +109,8 @@ Puppet::Type.type(:ufw_rule).provide(:ufw) do
   # A rule to be present must exist in every address family it applies to.
   # A rule to be removed exists while it remains in any of them.
   def exists?
+    return @property_hash[:ensure] == :present if resource[:action].nil?
+
     if resource[:ensure] == :absent
       matches.any?
     else
@@ -106,6 +126,8 @@ Puppet::Type.type(:ufw_rule).provide(:ufw) do
   end
 
   def create
+    raise Puppet::Error, "ufw has no rule named '#{resource[:name]}', and adding one needs an 'action'" if rule_options[:action].nil?
+
     run_ufw(PuppetX::Ufw::Rule.command_args(rule_options.merge(comment: resource[:comment])))
   end
 

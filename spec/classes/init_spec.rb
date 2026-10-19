@@ -51,7 +51,7 @@ describe 'ufw' do
 
         it do
           is_expected.to contain_exec('ufw-disable').with(
-            command: '/usr/sbin/ufw disable',
+            command: 'ufw disable',
             onlyif: "grep -qx 'ENABLED=yes' /etc/ufw/ufw.conf",
           )
         end
@@ -65,12 +65,13 @@ describe 'ufw' do
             default_outgoing: 'reject',
             default_routed: 'allow',
             logging: 'medium',
+            rules_entries: { 'ssh' => { 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' } },
           }
         end
 
         it do
           is_expected.to contain_exec('ufw-default-incoming').with(
-            command: '/usr/sbin/ufw default deny incoming',
+            command: 'ufw default deny incoming',
             unless: %(grep -Eqx 'DEFAULT_INPUT_POLICY="?DROP"?' /etc/default/ufw),
           ).that_requires('Package[ufw]')
         end
@@ -79,7 +80,7 @@ describe 'ufw' do
         it { is_expected.to contain_exec('ufw-default-routed').that_comes_before('Exec[ufw-logging]') }
         it do
           is_expected.to contain_exec('ufw-logging').with(
-            command: '/usr/sbin/ufw logging medium',
+            command: 'ufw logging medium',
             unless: "grep -Eqx 'LOGLEVEL=medium' /etc/ufw/ufw.conf",
           )
         end
@@ -147,7 +148,7 @@ describe 'ufw' do
         it { is_expected.to contain_exec('ufw-logging').that_comes_before('Exec[ufw-enable]') }
         it do
           is_expected.to contain_exec('ufw-enable').with(
-            command: '/usr/sbin/ufw --force enable',
+            command: 'ufw --force enable',
             unless: "grep -qx 'ENABLED=yes' /etc/ufw/ufw.conf",
           ).that_comes_before('Service[ufw]')
         end
@@ -220,6 +221,30 @@ describe 'ufw' do
 
         context 'with enabled => false' do
           let(:params) { { enabled: false, default_incoming: 'deny' } }
+
+          it { is_expected.to compile.with_all_deps }
+        end
+
+        context 'with default_incoming => deny, enabled unset and no rule allowing SSH' do
+          let(:params) { { default_incoming: 'deny' } }
+
+          it { is_expected.to compile.and_raise_error(%r{refusing to set a 'deny' incoming policy, which applies at once if ufw is active}) }
+        end
+
+        context 'with default_incoming => reject, enabled unset and SSH allowed' do
+          let(:params) { { default_incoming: 'reject', rules_entries: { 'ssh' => { 'action' => 'limit', 'to_port' => 22, 'proto' => 'tcp' } } } }
+
+          it { is_expected.to compile.with_all_deps }
+        end
+
+        context 'with default_incoming => deny, enabled unset and allow_lockout => true' do
+          let(:params) { { default_incoming: 'deny', allow_lockout: true } }
+
+          it { is_expected.to compile.with_all_deps }
+        end
+
+        context 'with only default_outgoing set' do
+          let(:params) { { default_outgoing: 'deny' } }
 
           it { is_expected.to compile.with_all_deps }
         end

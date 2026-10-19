@@ -44,12 +44,17 @@ policy takes effect.
 
 ### Lockout guard
 
-When `enabled` is `true`, the effective incoming policy denies or rejects,
-and no entry in `rules_entries` allows incoming SSH (see
-`ufw::allows_ssh`), catalog compilation fails, unless `allow_lockout` is
-`true`. An unset `default_incoming` counts as `deny`, which is ufw's
-packaged default; set `default_incoming` to `allow` to say otherwise. Rules
-that already exist on the node but aren't in `rules_entries` aren't
+Catalog compilation fails, unless `allow_lockout` is `true`, when no entry
+in `rules_entries` allows incoming SSH (see `ufw::allows_ssh`) and either:
+
+* `enabled` is `true` and the effective incoming policy denies or rejects.
+  An unset `default_incoming` counts as `deny`, which is ufw's packaged
+  default; set `default_incoming` to `allow` to say otherwise.
+* `default_incoming` is set to `deny` or `reject` and `enabled` isn't
+  `false`. Whether ufw is already active can't be known at compile time,
+  and if it is, the policy takes effect at once.
+
+Rules that already exist on the node but aren't in `rules_entries` aren't
 considered, since they can't be seen at compile time.
 
 #### Examples
@@ -88,9 +93,6 @@ The following parameters are available in the `ufw` class:
 
 * [`package_name`](#-ufw--package_name)
 * [`service_name`](#-ufw--service_name)
-* [`ufw_command`](#-ufw--ufw_command)
-* [`defaults_file`](#-ufw--defaults_file)
-* [`conf_file`](#-ufw--conf_file)
 * [`package_ensure`](#-ufw--package_ensure)
 * [`service_ensure`](#-ufw--service_ensure)
 * [`service_enable`](#-ufw--service_enable)
@@ -109,7 +111,8 @@ The following parameters are available in the `ufw` class:
 
 Data type: `String[1]`
 
-The ufw package
+The ufw package. A `ufw_rule` declared outside this class autorequires
+`Package['ufw']`, whatever this is set to.
 
 Default value: `'ufw'`
 
@@ -120,30 +123,6 @@ Data type: `String[1]`
 The ufw service
 
 Default value: `'ufw'`
-
-##### <a name="-ufw--ufw_command"></a>`ufw_command`
-
-Data type: `Stdlib::Absolutepath`
-
-The path to the `ufw` command
-
-Default value: `'/usr/sbin/ufw'`
-
-##### <a name="-ufw--defaults_file"></a>`defaults_file`
-
-Data type: `Stdlib::Absolutepath`
-
-ufw's defaults file, which holds the default policies and the IPv6 setting
-
-Default value: `'/etc/default/ufw'`
-
-##### <a name="-ufw--conf_file"></a>`conf_file`
-
-Data type: `Stdlib::Absolutepath`
-
-ufw's configuration file, which holds the enabled state and logging level
-
-Default value: `'/etc/ufw/ufw.conf'`
 
 ##### <a name="-ufw--package_ensure"></a>`package_ensure`
 
@@ -218,7 +197,7 @@ Default value: `undef`
 
 Data type: `Optional[Boolean]`
 
-Whether ufw manages IPv6 as well as IPv4 (`IPV6=` in `defaults_file`).
+Whether ufw manages IPv6 as well as IPv4 (`IPV6=` in `/etc/default/ufw`).
 When ufw is enabled, a change is applied with `ufw reload` before any
 rules are changed.
 
@@ -366,6 +345,12 @@ Valid values: `allow`, `deny`, `reject`, `limit`
 
 What to do with matching packets. Required, also for `ensure => absent`,
 since ufw only deletes a rule whose action matches.
+
+The exception is a resource with nothing but a name, or a name and
+`ensure => absent`, as `puppet resource` builds: it refers to the rule
+that `puppet resource ufw_rule` lists under that name. With
+`ensure => absent` that rule is removed if it exists; otherwise the
+resource is in sync when the rule exists and fails when it doesn't.
 
 ##### <a name="-ufw_rule--direction"></a>`direction`
 

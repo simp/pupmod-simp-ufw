@@ -10,28 +10,25 @@
 #
 # ### Lockout guard
 #
-# When `enabled` is `true`, the effective incoming policy denies or rejects,
-# and no entry in `rules_entries` allows incoming SSH (see
-# `ufw::allows_ssh`), catalog compilation fails, unless `allow_lockout` is
-# `true`. An unset `default_incoming` counts as `deny`, which is ufw's
-# packaged default; set `default_incoming` to `allow` to say otherwise. Rules
-# that already exist on the node but aren't in `rules_entries` aren't
+# Catalog compilation fails, unless `allow_lockout` is `true`, when no entry
+# in `rules_entries` allows incoming SSH (see `ufw::allows_ssh`) and either:
+#
+# * `enabled` is `true` and the effective incoming policy denies or rejects.
+#   An unset `default_incoming` counts as `deny`, which is ufw's packaged
+#   default; set `default_incoming` to `allow` to say otherwise.
+# * `default_incoming` is set to `deny` or `reject` and `enabled` isn't
+#   `false`. Whether ufw is already active can't be known at compile time,
+#   and if it is, the policy takes effect at once.
+#
+# Rules that already exist on the node but aren't in `rules_entries` aren't
 # considered, since they can't be seen at compile time.
 #
 # @param package_name
-#   The ufw package
+#   The ufw package. A `ufw_rule` declared outside this class autorequires
+#   `Package['ufw']`, whatever this is set to.
 #
 # @param service_name
 #   The ufw service
-#
-# @param ufw_command
-#   The path to the `ufw` command
-#
-# @param defaults_file
-#   ufw's defaults file, which holds the default policies and the IPv6 setting
-#
-# @param conf_file
-#   ufw's configuration file, which holds the enabled state and logging level
 #
 # @param package_ensure
 #   The `ensure` of the ufw package. When unset, `simp_options::package_ensure`
@@ -63,7 +60,7 @@
 #   but `off`.
 #
 # @param ipv6
-#   Whether ufw manages IPv6 as well as IPv4 (`IPV6=` in `defaults_file`).
+#   Whether ufw manages IPv6 as well as IPv4 (`IPV6=` in `/etc/default/ufw`).
 #   When ufw is enabled, a change is applied with `ufw reload` before any
 #   rules are changed.
 #
@@ -128,9 +125,6 @@
 class ufw (
   String[1]                            $package_name,
   String[1]                            $service_name,
-  Stdlib::Absolutepath                 $ufw_command,
-  Stdlib::Absolutepath                 $defaults_file,
-  Stdlib::Absolutepath                 $conf_file,
   Optional[String[1]]                  $package_ensure               = undef,
   Optional[Stdlib::Ensure::Service]    $service_ensure               = undef,
   Optional[Boolean]                    $service_enable               = undef,
@@ -153,16 +147,31 @@ class ufw (
     )
   }
 
-  if $enabled == true and !$allow_lockout and pick($default_incoming, 'deny') != 'allow' {
-    unless ufw::allows_ssh($rules_entries, $lockout_guard_port) {
-      fail(@("FAIL"/L)
-        ufw: refusing to enable ufw with a '${pick($default_incoming, 'deny')}' incoming policy and no \
-        ufw::rules_entries entry allowing SSH (port ${lockout_guard_port}/tcp or the OpenSSH app). \
-        Add one, or set ufw::allow_lockout to true if access is allowed some other way.
-        |-FAIL
-      )
-    }
+  $_incoming = pick($default_incoming, 'deny')
+  $_lockout_action = $_incoming ? {
+    'allow' => undef,
+    default => $enabled ? {
+      true    => "enable ufw with a '${_incoming}' incoming policy and",
+      false   => undef,
+      default => $default_incoming ? {
+        undef   => undef,
+        default => "set a '${_incoming}' incoming policy, which applies at once if ufw is active, with",
+      },
+    },
   }
+  if $_lockout_action and !$allow_lockout and !ufw::allows_ssh($rules_entries, $lockout_guard_port) {
+    fail(@("FAIL"/L)
+      ufw: refusing to ${_lockout_action} no \
+      ufw::rules_entries entry allowing SSH (port ${lockout_guard_port}/tcp or the OpenSSH app). \
+      Add one, or set ufw::allow_lockout to true if access is allowed some other way.
+      |-FAIL
+    )
+  }
+
+  # ufw's own files. Their paths are compiled into ufw, and the ufw_rule
+  # provider reads the same ones.
+  $_defaults_file = '/etc/default/ufw'
+  $_conf_file = '/etc/ufw/ufw.conf'
 
   $conflicting_packages_entries.each |$pkg, $opts| {
     if pick($opts['ensure'], 'present') == 'absent' {
@@ -181,7 +190,7 @@ class ufw (
     ensure => pick($package_ensure, lookup('simp_options::package_ensure', { 'default_value' => 'installed' })),
   }
 
-  $_grep = { 'path' => ['/usr/bin', '/bin', '/usr/sbin', '/sbin'] }
+  $_exec = { 'path' => ['/usr/sbin', '/usr/bin', '/sbin', '/bin'] }
 
   # Resources run in this order: rules, default policies, logging, enabling
   # or disabling, and the service. Only the ones whose parameter is set are
@@ -207,7 +216,7 @@ class ufw (
     $_ipv6 = $ipv6 ? { true => 'yes', default => 'no' }
 
     file_line { 'ufw IPV6':
-      path    => $defaults_file,
+      path    => $_defaults_file,
       line    => "IPV6=${_ipv6}",
       match   => '^IPV6=',
       require => Package[$package_name],
@@ -216,11 +225,11 @@ class ufw (
 
     # Applies the IPv6 setting to an enabled firewall before rules change
     exec { 'ufw-reload':
-      command     => "${ufw_command} reload",
-      onlyif      => "grep -qx 'ENABLED=yes' ${conf_file}",
+      command     => 'ufw reload',
+      onlyif      => "grep -qx 'ENABLED=yes' ${_conf_file}",
       refreshonly => true,
       before      => $_policy_execs + $_logging_execs + $_state_execs,
-      *           => $_grep,
+      *           => $_exec,
     }
   }
 
@@ -238,11 +247,11 @@ class ufw (
     [$key, $policy] = $setting
 
     exec { "ufw-default-${direction}":
-      command => "${ufw_command} default ${policy} ${direction}",
-      unless  => "grep -Eqx '${key}=\"?${_targets[$policy]}\"?' ${defaults_file}",
+      command => "ufw default ${policy} ${direction}",
+      unless  => "grep -Eqx '${key}=\"?${_targets[$policy]}\"?' ${_defaults_file}",
       require => Package[$package_name],
       before  => $_logging_execs + $_state_execs,
-      *       => $_grep,
+      *       => $_exec,
     }
   }
 
@@ -253,27 +262,27 @@ class ufw (
     }
 
     exec { 'ufw-logging':
-      command => "${ufw_command} logging ${logging}",
-      unless  => "grep -Eqx 'LOGLEVEL=${_level}' ${conf_file}",
+      command => "ufw logging ${logging}",
+      unless  => "grep -Eqx 'LOGLEVEL=${_level}' ${_conf_file}",
       require => Package[$package_name],
       before  => $_state_execs,
-      *       => $_grep,
+      *       => $_exec,
     }
   }
 
   if $enabled == true {
     exec { 'ufw-enable':
-      command => "${ufw_command} --force enable",
-      unless  => "grep -qx 'ENABLED=yes' ${conf_file}",
+      command => 'ufw --force enable',
+      unless  => "grep -qx 'ENABLED=yes' ${_conf_file}",
       require => Package[$package_name],
-      *       => $_grep,
+      *       => $_exec,
     }
   } elsif $enabled == false {
     exec { 'ufw-disable':
-      command => "${ufw_command} disable",
-      onlyif  => "grep -qx 'ENABLED=yes' ${conf_file}",
+      command => 'ufw disable',
+      onlyif  => "grep -qx 'ENABLED=yes' ${_conf_file}",
       require => Package[$package_name],
-      *       => $_grep,
+      *       => $_exec,
     }
   }
 
