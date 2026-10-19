@@ -54,8 +54,17 @@ in `rules_entries` allows incoming SSH (see `ufw::allows_ssh`) and either:
   `false`. Whether ufw is already active can't be known at compile time,
   and if it is, the policy takes effect at once.
 
+Removing the rules that allow SSH is guarded the same way: compilation
+fails when an `ensure => absent` entry would allow SSH, no other entry
+does, `enabled` isn't `false` and the incoming policy (unset counting as
+`deny`) isn't `allow`.
+
 Rules that already exist on the node but aren't in `rules_entries` aren't
 considered, since they can't be seen at compile time.
+
+Entries that differ only in `action`, `log` or `comment` fail compilation
+too: ufw keeps a single rule for them, so they would replace each other on
+every run.
 
 #### Examples
 
@@ -272,12 +281,17 @@ parameters, which map onto ufw's extended rule syntax:
 
 A rule is matched against ufw's rule store in ufw's normalized form, so
 an equivalent rule added by hand (for example `ufw allow ssh/tcp` for
-`to_port => 22, proto => 'tcp'`) is recognized. A rule with no address
-applies to IPv4 and, when ufw's IPv6 support is on, IPv6, and must exist
-in both to count as present.
+`to_port => 22, proto => 'tcp'`) is recognized; application names are
+matched ignoring case. A rule with no address (or `any`) applies to IPv4
+and, when ufw uses IPv6 (`IPV6=yes` in /etc/default/ufw and IPv6 support
+in the kernel), IPv6, and must exist in both to count as present.
+`0.0.0.0/0` is IPv4 only and `::/0` IPv6 only, as in ufw.
 
 Changing a rule's `action` or `log` adds a rule that differs from the
 existing one only in those, which ufw replaces in place.
+
+With `resources { 'ufw_rule': purge => true }`, a rule is purged only
+when no `ufw_rule` in the catalog that should be present describes it.
 
 #### Examples
 
@@ -438,17 +452,23 @@ Type: Puppet Language
 
 Used by the lockout guard in class `ufw`. A rule counts when it is not
 `absent`, is an `allow` or `limit` rule for incoming (not routed) traffic,
-and either uses the `OpenSSH` application profile or includes `$port` in
-its `to_port` with protocol `tcp` or `any`. Rules restricted to a source
-address or interface count too.
+with protocol `tcp` or `any`, and either uses the `OpenSSH` application
+profile, includes `$port` in its `to_port`, or has no port or application
+restriction at all (so it applies to every port). Rules restricted to a source network
+or an interface count, except rules for the loopback interface (`lo`) or
+a loopback source or destination (`127.0.0.0/8`, `::1`), which don't give
+remote access.
 
 #### `ufw::allows_ssh(Hash[String[1], Ufw::RuleOptions] $rules, Stdlib::Port $port = 22)`
 
 Used by the lockout guard in class `ufw`. A rule counts when it is not
 `absent`, is an `allow` or `limit` rule for incoming (not routed) traffic,
-and either uses the `OpenSSH` application profile or includes `$port` in
-its `to_port` with protocol `tcp` or `any`. Rules restricted to a source
-address or interface count too.
+with protocol `tcp` or `any`, and either uses the `OpenSSH` application
+profile, includes `$port` in its `to_port`, or has no port or application
+restriction at all (so it applies to every port). Rules restricted to a source network
+or an interface count, except rules for the loopback interface (`lo`) or
+a loopback source or destination (`127.0.0.0/8`, `::1`), which don't give
+remote access.
 
 Returns: `Boolean`
 

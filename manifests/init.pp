@@ -20,8 +20,17 @@
 #   `false`. Whether ufw is already active can't be known at compile time,
 #   and if it is, the policy takes effect at once.
 #
+# Removing the rules that allow SSH is guarded the same way: compilation
+# fails when an `ensure => absent` entry would allow SSH, no other entry
+# does, `enabled` isn't `false` and the incoming policy (unset counting as
+# `deny`) isn't `allow`.
+#
 # Rules that already exist on the node but aren't in `rules_entries` aren't
 # considered, since they can't be seen at compile time.
+#
+# Entries that differ only in `action`, `log` or `comment` fail compilation
+# too: ufw keeps a single rule for them, so they would replace each other on
+# every run.
 #
 # @param package_name
 #   The ufw package. A `ufw_rule` declared outside this class autorequires
@@ -159,11 +168,63 @@ class ufw (
       },
     },
   }
-  if $_lockout_action and !$allow_lockout and !ufw::allows_ssh($rules_entries, $lockout_guard_port) {
+  $_allows_ssh = ufw::allows_ssh($rules_entries, $lockout_guard_port)
+  if $_lockout_action and !$allow_lockout and !$_allows_ssh {
     fail(@("FAIL"/L)
       ufw: refusing to ${_lockout_action} no \
       ufw::rules_entries entry allowing SSH (port ${lockout_guard_port}/tcp or the OpenSSH app). \
       Add one, or set ufw::allow_lockout to true if access is allowed some other way.
+      |-FAIL
+    )
+  }
+
+  # Removing the only rules that allow SSH locks out a node where ufw is
+  # already active with a denying policy, which can't be ruled out here.
+  $_removed_ssh = $rules_entries.filter |$name, $opts| {
+    $opts['ensure'] == 'absent' and ufw::allows_ssh({ $name => $opts + { 'ensure' => 'present' } }, $lockout_guard_port)
+  }.keys
+  if $enabled != false and $_incoming != 'allow' and !$allow_lockout and !$_allows_ssh and !$_removed_ssh.empty {
+    fail(@("FAIL"/L)
+      ufw: refusing to remove the ufw::rules_entries ${_removed_ssh.sort.join(', ')} allowing SSH \
+      with a '${_incoming}' incoming policy and no other entry allowing SSH \
+      (port ${lockout_guard_port}/tcp or the OpenSSH app). \
+      Add one, or set ufw::allow_lockout to true if access is allowed some other way.
+      |-FAIL
+    )
+  }
+
+  # ufw keeps one rule for entries that differ only in action, log type or
+  # comment, replacing it in place, so such entries would undo each other
+  # on every run.
+  $_rule_keys = $rules_entries.filter |$name, $opts| { pick($opts['ensure'], 'present') == 'present' }.map |$name, $opts| {
+    $_key = {
+      'route'         => $opts['route'] ? { undef => false, default => $opts['route'] },
+      'direction'     => pick($opts['direction'], 'in'),
+      'interface'     => $opts['interface'],
+      'out_interface' => $opts['out_interface'],
+      'proto'         => pick($opts['proto'], 'any'),
+      'from'          => downcase(String(pick($opts['from'], 'any'))),
+      'to'            => downcase(String(pick($opts['to'], 'any'))),
+      'from_app'      => $opts['from_app'].then |$app| { downcase($app) },
+      'to_app'        => $opts['to_app'].then |$app| { downcase($app) },
+    } + ['from_port', 'to_port'].reduce({}) |$memo, $param| {
+      $memo + {
+        $param => $opts[$param] ? {
+          undef   => undef,
+          Array   => $opts[$param].map |$p| { String($p) }.sort.join(','),
+          default => String($opts[$param]).split(',').sort.join(','),
+        },
+      }
+    }
+    [String($_key), $name]
+  }
+  $_same_rule = $_rule_keys.reduce({}) |$memo, $pair| {
+    $memo + { $pair[0] => ($memo[$pair[0]] ? { undef => [], default => $memo[$pair[0]] }) + [$pair[1]] }
+  }.filter |$key, $names| { $names.length > 1 }.map |$key, $names| { $names.sort.join(' and ') }
+  unless $_same_rule.empty {
+    fail(@("FAIL"/L)
+      ufw: these ufw::rules_entries describe the same ufw rule, differing at most in action, log or comment, \
+      and would replace each other on every run: ${_same_rule.sort.join('; ')}
       |-FAIL
     )
   }

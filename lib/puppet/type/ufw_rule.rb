@@ -16,12 +16,17 @@ Puppet::Type.newtype(:ufw_rule) do
 
     A rule is matched against ufw's rule store in ufw's normalized form, so
     an equivalent rule added by hand (for example `ufw allow ssh/tcp` for
-    `to_port => 22, proto => 'tcp'`) is recognized. A rule with no address
-    applies to IPv4 and, when ufw's IPv6 support is on, IPv6, and must exist
-    in both to count as present.
+    `to_port => 22, proto => 'tcp'`) is recognized; application names are
+    matched ignoring case. A rule with no address (or `any`) applies to IPv4
+    and, when ufw uses IPv6 (`IPV6=yes` in /etc/default/ufw and IPv6 support
+    in the kernel), IPv6, and must exist in both to count as present.
+    `0.0.0.0/0` is IPv4 only and `::/0` IPv6 only, as in ufw.
 
     Changing a rule's `action` or `log` adds a rule that differs from the
     existing one only in those, which ufw replaces in place.
+
+    With `resources { 'ufw_rule': purge => true }`, a rule is purged only
+    when no `ufw_rule` in the catalog that should be present describes it.
 
     @example Allow SSH from an admin network
       ufw_rule { 'ssh from admin net':

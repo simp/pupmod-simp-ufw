@@ -192,6 +192,60 @@ describe 'ufw' do
         it { is_expected.to compile.and_raise_error(%r{unrecognized key 'to_prot'}) }
       end
 
+      describe 'entries for the same ufw rule' do
+        context 'differing only in action' do
+          let(:params) do
+            {
+              rules_entries: {
+                'ssh allow' => { 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' },
+                'ssh deny' => { 'action' => 'deny', 'to_port' => [22], 'proto' => 'tcp', 'direction' => 'in', 'comment' => 'no' },
+              },
+            }
+          end
+
+          it { is_expected.to compile.and_raise_error(%r{describe the same ufw rule.*: ssh allow and ssh deny}) }
+        end
+
+        context 'differing only in log type and the case of the application name' do
+          let(:params) do
+            {
+              rules_entries: {
+                'a' => { 'action' => 'allow', 'to_app' => 'OpenSSH' },
+                'b' => { 'action' => 'allow', 'to_app' => 'openssh', 'log' => 'log' },
+              },
+            }
+          end
+
+          it { is_expected.to compile.and_raise_error(%r{describe the same ufw rule.*: a and b}) }
+        end
+
+        context 'when one of them is absent' do
+          let(:params) do
+            {
+              rules_entries: {
+                'ssh allow' => { 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' },
+                'ssh limit' => { 'ensure' => 'absent', 'action' => 'limit', 'to_port' => 22, 'proto' => 'tcp' },
+              },
+            }
+          end
+
+          it { is_expected.to compile.with_all_deps }
+        end
+
+        context 'differing in a port' do
+          let(:params) do
+            {
+              rules_entries: {
+                'ssh' => { 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' },
+                'alt' => { 'action' => 'deny', 'to_port' => 2222, 'proto' => 'tcp' },
+              },
+            }
+          end
+
+          it { is_expected.to compile.with_all_deps }
+        end
+      end
+
       describe 'the lockout guard' do
         let(:base) { { enabled: true } }
 
@@ -266,6 +320,40 @@ describe 'ufw' do
 
           context 'and lockout_guard_port set' do
             let(:params) { base.merge(rules_entries: rules, lockout_guard_port: 2222) }
+
+            it { is_expected.to compile.with_all_deps }
+          end
+        end
+
+        context 'when removing the only rule allowing SSH' do
+          let(:ssh_absent) { { 'ssh' => { 'ensure' => 'absent', 'action' => 'allow', 'to_port' => 22, 'proto' => 'tcp' } } }
+
+          context 'with enabled and default_incoming unset' do
+            let(:params) { { rules_entries: ssh_absent } }
+
+            it { is_expected.to compile.and_raise_error(%r{refusing to remove the ufw::rules_entries ssh allowing SSH with a 'deny' incoming policy}) }
+          end
+
+          context 'with another rule allowing SSH' do
+            let(:params) { { rules_entries: ssh_absent.merge('ssh limited' => { 'action' => 'limit', 'to_port' => 22, 'proto' => 'tcp' }) } }
+
+            it { is_expected.to compile.with_all_deps }
+          end
+
+          context 'with enabled => false' do
+            let(:params) { { enabled: false, rules_entries: ssh_absent } }
+
+            it { is_expected.to compile.with_all_deps }
+          end
+
+          context 'with default_incoming => allow' do
+            let(:params) { { default_incoming: 'allow', rules_entries: ssh_absent } }
+
+            it { is_expected.to compile.with_all_deps }
+          end
+
+          context 'with allow_lockout => true' do
+            let(:params) { { allow_lockout: true, rules_entries: ssh_absent } }
 
             it { is_expected.to compile.with_all_deps }
           end

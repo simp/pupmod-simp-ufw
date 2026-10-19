@@ -32,13 +32,18 @@ Puppet::Type.type(:ufw_rule).provide(:ufw) do
     nil
   end
 
-  # Whether ufw manages IPv6 (`IPV6=yes` in /etc/default/ufw). ufw ships with
-  # IPv6 enabled, so that's assumed when the file is missing.
+  def self.kernel_ipv6?
+    File.exist?('/proc/sys/net/ipv6')
+  end
+
+  # Whether ufw writes IPv6 rules. Like ufw's own check (`use_ipv6()` in
+  # ufw/backend.py), that needs `IPV6=yes` in /etc/default/ufw and IPv6
+  # support in the kernel; a missing setting means no.
   def self.ipv6_enabled?(content = read_file(PuppetX::Ufw::Rule::DEFAULTS_FILE))
-    return true if content.nil?
+    return false if content.nil?
 
     setting = content.each_line.map { |l| l[%r{\AIPV6=(\S*)}, 1] }.compact.last
-    setting.nil? || setting.delete('"\'').casecmp('yes').zero?
+    !setting.nil? && setting.delete('"\'').casecmp('yes').zero? && kernel_ipv6?
   end
 
   # The rules ufw knows about, and whether IPv6 is enabled.
@@ -109,12 +114,32 @@ Puppet::Type.type(:ufw_rule).provide(:ufw) do
   # A rule to be present must exist in every address family it applies to.
   # A rule to be removed exists while it remains in any of them.
   def exists?
+    # Nothing to purge when a declared rule manages this one
+    return false if resource.purging? && declared_in_catalog?
     return @property_hash[:ensure] == :present if resource[:action].nil?
 
     if resource[:ensure] == :absent
       matches.any?
     else
       !matches.empty? && matches.all?
+    end
+  end
+
+  # Whether a `ufw_rule` declared in the catalog manages this rule.
+  #
+  # `resources { 'ufw_rule': purge => true }` lists the rules on the system
+  # under their `ufw show added` names, which never match the titles of the
+  # declared resources, so a rule is only purged when no declared rule that
+  # should be present describes it.
+  def declared_in_catalog?
+    mine = PuppetX::Ufw::Rule.desired_tuples(rule_options, true)
+    resource.catalog.resources.any? do |other|
+      next false unless other.is_a?(resource.class) && !other.purging?
+      next false if other[:action].nil? || other[:ensure] == :absent
+
+      PuppetX::Ufw::Rule.desired_tuples(other.provider.rule_options, true).any? do |want|
+        mine.any? { |have| PuppetX::Ufw::Rule.match?(want, have) }
+      end
     end
   end
 

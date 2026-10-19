@@ -166,7 +166,9 @@ module PuppetX # rubocop:disable Style/ClassAndModuleChildren
       def families(opts, ipv6_enabled)
         if v6_address?(opts[:from]) || v6_address?(opts[:to])
           [true]
-        elsif [opts[:from], opts[:to]].any? { |a| !a.nil? && !['any', ANY4, ANY6].include?(a.to_s.downcase) }
+        elsif [opts[:from], opts[:to]].any? { |a| !a.nil? && !a.to_s.casecmp('any').zero? }
+          # Like ufw, only the literal `any` means both families:
+          # `0.0.0.0/0` is IPv4 only (and `::/0` IPv6 only, above).
           [false]
         elsif IPV4_ONLY_PROTOCOLS.include?(opts[:proto].to_s) || !ipv6_enabled
           [false]
@@ -218,11 +220,14 @@ module PuppetX # rubocop:disable Style/ClassAndModuleChildren
       #
       # For application rules, ufw fills in the protocol and ports from the
       # application profile, so those are compared by application name only.
+      # ufw stores an application name in the profile's own spelling, found
+      # ignoring case, so names are compared ignoring case.
       def match?(a, b)
         IDENTITY.all? do |field|
           next true if field == :proto && (!a[:dapp].empty? || !a[:sapp].empty?)
           next true if field == :dport && !a[:dapp].empty?
           next true if field == :sport && !a[:sapp].empty?
+          next a[field].casecmp?(b[field]) if [:dapp, :sapp].include?(field)
 
           a[field] == b[field]
         end && a[:v6] == b[:v6]

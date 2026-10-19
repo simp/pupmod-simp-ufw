@@ -10,6 +10,7 @@ describe provider_class do
     allow(described_class).to receive(:read_file).with('/etc/ufw/user.rules').and_return(rules)
     allow(described_class).to receive(:read_file).with('/etc/ufw/user6.rules').and_return(rules6)
     allow(described_class).to receive(:read_file).with('/etc/default/ufw').and_return(defaults)
+    allow(described_class).to receive(:kernel_ipv6?).and_return(true)
   end
 
   def provider_for(params)
@@ -19,10 +20,21 @@ describe provider_class do
   end
 
   describe '.ipv6_enabled?' do
-    it { expect(described_class.ipv6_enabled?(nil)).to be true }
-    it { expect(described_class.ipv6_enabled?("IPV6=yes\n")).to be true }
-    it { expect(described_class.ipv6_enabled?("IPV6=no\n")).to be false }
-    it { expect(described_class.ipv6_enabled?(%(# IPV6=no\nIPV6="yes"\n))).to be true }
+    context 'with IPv6 in the kernel' do
+      before(:each) { allow(described_class).to receive(:kernel_ipv6?).and_return(true) }
+
+      it { expect(described_class.ipv6_enabled?(nil)).to be false }
+      it { expect(described_class.ipv6_enabled?("IPV6=yes\n")).to be true }
+      it { expect(described_class.ipv6_enabled?("IPV6=no\n")).to be false }
+      it { expect(described_class.ipv6_enabled?("DEFAULT_INPUT_POLICY=\"DROP\"\n")).to be false }
+      it { expect(described_class.ipv6_enabled?(%(# IPV6=no\nIPV6="yes"\n))).to be true }
+    end
+
+    context 'without IPv6 in the kernel (ipv6.disable=1)' do
+      before(:each) { allow(described_class).to receive(:kernel_ipv6?).and_return(false) }
+
+      it { expect(described_class.ipv6_enabled?("IPV6=yes\n")).to be false }
+    end
   end
 
   context 'when ufw is not installed' do
@@ -114,6 +126,7 @@ describe provider_class do
         'a network written with host bits' => { from: '10.1.2.3/8', proto: 'esp' },
         'a source port rule' => { from: '10.0.0.1', from_port: 123, proto: 'udp' },
         'an application rule' => { to_app: 'OpenSSH' },
+        'an application name in another case' => { to_app: 'openssh' },
         'an application rule with a space' => { from: '172.16.0.0/12', to_app: 'Web Full' },
         'an application rule on an interface' => { interface: 'eth0', to_app: 'OpenSSH' },
         'a source application rule' => { from: '10.1.0.0/16', to_app: 'OpenSSH' },
@@ -154,6 +167,55 @@ describe provider_class do
       it 'needs a rule without addresses in IPv4 only when IPv6 is disabled' do
         allow(described_class).to receive(:read_file).with('/etc/default/ufw').and_return("IPV6=no\n")
         expect(provider_for(action: 'limit', to_port: 2222, proto: 'tcp').exists?).to be true
+      end
+
+      it 'needs a rule from 0.0.0.0/0 in IPv4 only, like ufw' do
+        expect(PuppetX::Ufw::Rule.families({ from: '0.0.0.0/0' }, true)).to eq([false])
+        expect(PuppetX::Ufw::Rule.families({ to: '::/0' }, true)).to eq([true])
+        expect(PuppetX::Ufw::Rule.families({ from: 'any' }, true)).to eq([false, true])
+        # Only in user.rules, so present when asked for in IPv4 only
+        expect(provider_for(action: 'limit', from: '0.0.0.0/0', to_port: 2222, proto: 'tcp').exists?).to be true
+      end
+
+      it 'needs a rule without addresses in IPv4 only when the kernel has no IPv6' do
+        allow(described_class).to receive(:kernel_ipv6?).and_return(false)
+        expect(provider_for(action: 'limit', to_port: 2222, proto: 'tcp').exists?).to be true
+      end
+
+      describe 'purging with resources { ufw_rule: purge => true }' do
+        let(:catalog) { Puppet::Resource::Catalog.new }
+
+        def purge_candidate(name)
+          candidate = described_class.instances.find { |p| p.name == name }
+          resource = Puppet::Type.type(:ufw_rule).new(name: name, provider: candidate, ensure: 'absent')
+          resource.purging
+          catalog.add_resource(resource)
+          resource.provider
+        end
+
+        def declare(params)
+          resource = Puppet::Type.type(:ufw_rule).new({ name: "declared #{params}", action: 'allow' }.merge(params))
+          catalog.add_resource(resource)
+          described_class.prefetch(resource.name => resource)
+        end
+
+        it 'keeps a rule a declared resource manages' do
+          declare(to_port: 22, proto: 'tcp')
+          declare(to_app: 'openssh')
+          expect(purge_candidate('allow 22/tcp').exists?).to be false
+          expect(purge_candidate('allow OpenSSH').exists?).to be false
+        end
+
+        it 'purges a rule no declared resource manages' do
+          declare(to_port: 22, proto: 'tcp')
+          expect(purge_candidate('allow log 2223/tcp').exists?).to be true
+          expect(purge_candidate('allow 60000:61000/udp').exists?).to be true
+        end
+
+        it 'purges a rule a declared resource removes' do
+          declare(ensure: 'absent', to_port: 22, proto: 'tcp')
+          expect(purge_candidate('allow 22/tcp').exists?).to be true
+        end
       end
 
       it 'reads the comment of a matched rule' do

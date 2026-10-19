@@ -251,6 +251,29 @@ describe 'ufw class' do
           expect(show_added.lines.map(&:strip)).to include('ufw allow log from 192.168.0.0/16 to any app OpenSSH')
         end
       end
+
+      context 'with ufw_rule resources purged' do
+        let(:manifest) do
+          full_manifest(
+            'openssh lowercase' => { 'action' => 'allow', 'from' => '192.168.0.0/16', 'to_app' => 'openssh', 'log' => 'log' },
+            'from any ipv4' => { 'action' => 'allow', 'from' => '0.0.0.0/0', 'to_port' => 2200, 'proto' => 'tcp' },
+          ) + "\nresources { 'ufw_rule': purge => true }"
+        end
+
+        before(:context) { on(host, 'ufw allow 8446/tcp') }
+
+        it 'removes only the rules no resource declares' do
+          apply_manifest_on(host, manifest, catch_failures: true)
+          rules = show_added.lines.map(&:strip)
+          expect(rules).not_to include('ufw allow 8446/tcp')
+          expect(rules.grep(%r{route})).to be_empty
+          expect(rules).to include('ufw allow 22/tcp', 'ufw allow log from 192.168.0.0/16 to any app OpenSSH')
+        end
+
+        it 'is idempotent' do
+          apply_manifest_on(host, manifest, catch_changes: true)
+        end
+      end
     end
   end
 end

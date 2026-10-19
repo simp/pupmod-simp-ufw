@@ -164,34 +164,47 @@ ufw::rules_entries:
 Rules are matched against ufw's own rule store (`/etc/ufw/user.rules` and
 `user6.rules`) in ufw's normalized form, so a rule added by hand in an
 equivalent form, such as `ufw allow ssh/tcp` for `to_port: 22, proto: tcp`,
-is recognized. A rule without an address applies to IPv4 and, when IPv6 is
-enabled, IPv6, and Puppet adds it to whichever is missing it. Changing a
-rule's `action`, `log` or `comment` makes ufw replace the existing rule in
-place, keeping its position.
+is recognized, and application names are matched ignoring case, as ufw does.
+A rule without an address, or with the address `any`, applies to IPv4 and,
+when ufw uses IPv6 (`IPV6=yes` and IPv6 support in the kernel), IPv6, and
+Puppet adds it to whichever is missing it. `0.0.0.0/0` means IPv4 only and
+`::/0` IPv6 only. Changing a rule's `action`, `log` or `comment` makes ufw
+replace the existing rule in place, keeping its position, so entries that
+differ only in those fail compilation: they would replace each other on every
+run.
+
+`resources { 'ufw_rule': purge => true }` removes the rules that no
+`ufw_rule` declares. A rule counts as declared when a `ufw_rule` that should
+be present describes it, whatever that resource's title.
 
 Rules are added at the end of ufw's rule list; this module doesn't manage
 rule order.
 
 ### The lockout guard
 
-Enabling ufw with an incoming policy that denies traffic, or setting that
-policy while ufw is active, with no rule allowing SSH, would cut off remote
-access. Catalog compilation fails when `ufw::enabled` is `true`, or when
-`ufw::default_incoming` is set to `deny` or `reject` and `ufw::enabled` isn't
-`false`, unless one of these holds:
+Enabling ufw with an incoming policy that denies traffic, setting that
+policy while ufw is active, or removing the rule that allows SSH while it is,
+would cut off remote access. Catalog compilation fails, unless
+`ufw::allow_lockout` is `true` or an entry in `ufw::rules_entries` allows
+incoming SSH (see below), when:
 
-* `ufw::default_incoming` is `allow`;
-* an entry in `ufw::rules_entries` allows incoming SSH: an `allow` or `limit`
-  rule for incoming, non-routed traffic to `ufw::lockout_guard_port`
-  (default `22`) with protocol `tcp` or `any`, or for the `OpenSSH`
-  application profile. A rule restricted to a source network or interface
-  counts;
-* `ufw::allow_lockout` is `true`.
+* `ufw::enabled` is `true` and `ufw::default_incoming` isn't `allow`;
+* `ufw::default_incoming` is set to `deny` or `reject` and `ufw::enabled`
+  isn't `false`; or
+* an `ensure: absent` entry would allow SSH, `ufw::enabled` isn't `false`
+  and `ufw::default_incoming` isn't `allow`.
+
+An entry allows incoming SSH when it is an `allow` or `limit` rule for
+incoming, non-routed traffic with protocol `tcp` or `any`, and is for the
+`OpenSSH` application profile, includes `ufw::lockout_guard_port` (default
+`22`) in its `to_port`, or has no port or application restriction at all. A
+rule restricted to a source network or interface counts, except one for the
+loopback interface (`lo`) or a loopback address (`127.0.0.0/8`, `::1`).
 
 An unset `ufw::default_incoming` counts as `deny`, which is ufw's packaged
 default. Whether ufw is already active can't be known at compile time, so
-setting a denying incoming policy is guarded even when `ufw::enabled` is
-unset. Rules that exist on the node but aren't in `ufw::rules_entries`
+setting a denying incoming policy or removing the SSH rule is guarded even
+when `ufw::enabled` is unset. Rules that exist on the node but aren't in `ufw::rules_entries`
 can't be seen at compile time and don't count; set `ufw::allow_lockout` when
 SSH is allowed that way.
 

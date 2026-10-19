@@ -2,9 +2,12 @@
 #
 # Used by the lockout guard in class `ufw`. A rule counts when it is not
 # `absent`, is an `allow` or `limit` rule for incoming (not routed) traffic,
-# and either uses the `OpenSSH` application profile or includes `$port` in
-# its `to_port` with protocol `tcp` or `any`. Rules restricted to a source
-# address or interface count too.
+# with protocol `tcp` or `any`, and either uses the `OpenSSH` application
+# profile, includes `$port` in its `to_port`, or has no port or application
+# restriction at all (so it applies to every port). Rules restricted to a source network
+# or an interface count, except rules for the loopback interface (`lo`) or
+# a loopback source or destination (`127.0.0.0/8`, `::1`), which don't give
+# remote access.
 #
 # @param rules
 #   The rules, as for `ufw::rules_entries`
@@ -31,15 +34,21 @@ function ufw::allows_ssh(
         default => $port >= $_range[0] and $port <= $_range[1],
       }
     }
+    $_all_ports = ['to_port', 'to_app', 'from_port', 'from_app'].all |$param| { $opts[$param] =~ Undef }
+
+    $_loopback = $opts['interface'] == 'lo' or [$opts['from'], $opts['to']].any |$addr| {
+      $addr =~ String and ($addr =~ /\A127\./ or $addr in ['::1', '::1/128'])
+    }
 
     (
       pick($opts['ensure'], 'present') == 'present'
       and $opts['action'] in ['allow', 'limit']
       and !pick($opts['route'], false)
       and pick($opts['direction'], 'in') == 'in'
+      and !$_loopback
       and (
         $opts['to_app'] == 'OpenSSH'
-        or ($_port_match and pick($opts['proto'], 'any') in ['tcp', 'any'])
+        or (($_port_match or $_all_ports) and pick($opts['proto'], 'any') in ['tcp', 'any'])
       )
     )
   }
